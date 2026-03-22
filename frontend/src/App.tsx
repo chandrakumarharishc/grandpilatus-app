@@ -1,348 +1,573 @@
-import { useEffect, useState } from "react";
-import { createCampaign, deleteCampaign, getCampaigns, getPerformance, updateCampaign } from "./api";
-import { Campaign, CampaignPerformance, CampaignStatus } from "./types";
+import { useEffect, useMemo, useState } from "react";
+import {
+  createCampaign,
+  deleteCampaign,
+  getCampaigns,
+  getPerformance,
+  updateCampaign,
+} from "./api";
+import {
+  Campaign,
+  CampaignFormData,
+  CampaignPerformance,
+  CampaignStatus,
+} from "./types";
 
-const emptyForm = {
+const emptyForm: CampaignFormData = {
   name: "",
   description: "",
   segment: "",
-  status: "Entwurf" as CampaignStatus,
+  status: "Entwurf",
   startDate: "",
-  endDate: ""
+  endDate: "",
 };
 
-type View = "dashboard" | "campaigns" | "performance" | "mobile";
+type View = "dashboard" | "campaigns" | "performance";
+
+const statusOptions: CampaignStatus[] = [
+  "Entwurf",
+  "Aktiv",
+  "Pausiert",
+  "Beendet",
+];
 
 export default function App() {
   const [view, setView] = useState<View>("dashboard");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(1);
-  const [performance, setPerformance] = useState<CampaignPerformance | null>(null);
-  const [message, setMessage] = useState("");
+  const [form, setForm] = useState<CampaignFormData>(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
+  const [performance, setPerformance] =
+    useState<CampaignPerformance | null>(null);
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
 
   async function loadCampaigns(searchTerm = "") {
-    const data = await getCampaigns(searchTerm);
-    setCampaigns(data);
+    setLoading(true);
+    try {
+      const data = await getCampaigns(searchTerm);
+      setCampaigns(data);
+    } catch {
+      setMessage({
+        type: "error",
+        text: "Kampagnen konnten nicht geladen werden.",
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function loadPerformance(campaignId: number) {
+  async function loadPerformance(campaignId: string) {
     try {
       const data = await getPerformance(campaignId);
       setPerformance(data);
     } catch {
       setPerformance(null);
+      setMessage({
+        type: "error",
+        text: "Für diese Kampagne liegen keine Performance-Daten vor.",
+      });
     }
   }
 
   useEffect(() => {
     loadCampaigns();
-    loadPerformance(1);
   }, []);
+
+  const dashboardStats = useMemo(() => {
+    const active = campaigns.filter((c) => c.status === "Aktiv").length;
+    const draft = campaigns.filter((c) => c.status === "Entwurf").length;
+    const paused = campaigns.filter((c) => c.status === "Pausiert").length;
+
+    return {
+      total: campaigns.length,
+      active,
+      draft,
+      paused,
+    };
+  }, [campaigns]);
+
+  const selectedCampaign = useMemo(
+    () => campaigns.find((c) => c.id === selectedCampaignId) ?? null,
+    [campaigns, selectedCampaignId]
+  );
 
   async function handleSubmit() {
     try {
+      if (!form.name || !form.segment || !form.startDate || !form.endDate) {
+        setMessage({
+          type: "error",
+          text: "Bitte alle Pflichtfelder ausfüllen.",
+        });
+        return;
+      }
+
       if (editingId) {
         await updateCampaign(editingId, form);
-        setMessage("Kampagne erfolgreich aktualisiert.");
+        setMessage({
+          type: "success",
+          text: "Kampagne erfolgreich aktualisiert.",
+        });
       } else {
         await createCampaign(form);
-        setMessage("Kampagne erfolgreich erstellt.");
+        setMessage({
+          type: "success",
+          text: "Kampagne erfolgreich erstellt.",
+        });
       }
 
       setForm(emptyForm);
       setEditingId(null);
       await loadCampaigns(search);
+      setView("campaigns");
     } catch {
-      setMessage("Fehler beim Speichern.");
+      setMessage({
+        type: "error",
+        text: "Fehler beim Speichern der Kampagne.",
+      });
     }
   }
 
-  async function handleSearch() {
-    await loadCampaigns(search);
+  async function handleDelete(id: string) {
+    try {
+      await deleteCampaign(id);
+      setMessage({
+        type: "success",
+        text: "Kampagne wurde gelöscht.",
+      });
+      await loadCampaigns(search);
+
+      if (selectedCampaignId === id) {
+        setSelectedCampaignId("");
+        setPerformance(null);
+      }
+    } catch {
+      setMessage({
+        type: "error",
+        text: "Kampagne konnte nicht gelöscht werden.",
+      });
+    }
   }
 
   function handleEdit(campaign: Campaign) {
     setEditingId(campaign.id);
     setForm({
       name: campaign.name,
-      description: campaign.description,
+      description: campaign.description ?? "",
       segment: campaign.segment,
       status: campaign.status,
-      startDate: campaign.startDate,
-      endDate: campaign.endDate
+      startDate: campaign.startDate ?? "",
+      endDate: campaign.endDate ?? "",
     });
     setView("campaigns");
-    setMessage("Bearbeitungsmodus aktiv.");
+    setMessage({
+      type: "success",
+      text: "Bearbeitungsmodus aktiviert.",
+    });
   }
 
-  async function handleDelete(id: number) {
-    await deleteCampaign(id);
-    setMessage("Kampagne gelöscht.");
+  async function handleSearch() {
     await loadCampaigns(search);
-
-    if (selectedCampaignId === id) {
-      setPerformance(null);
-    }
   }
 
-  async function showPerformance(id: number) {
+  async function handleShowPerformance(id: string) {
     setSelectedCampaignId(id);
     await loadPerformance(id);
     setView("performance");
   }
 
-  const activeCount = campaigns.filter((c) => c.status === "Aktiv").length;
-  const draftCount = campaigns.filter((c) => c.status === "Entwurf").length;
+  function resetForm() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setMessage({
+      type: "success",
+      text: "Formular zurückgesetzt.",
+    });
+  }
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h2>Grand Pilatus</h2>
-        <button onClick={() => setView("dashboard")}>Dashboard</button>
-        <button onClick={() => setView("campaigns")}>Kampagnen</button>
-        <button onClick={() => setView("performance")}>Performance</button>
-        <button onClick={() => setView("mobile")}>Mobile Screens</button>
+        <div>
+          <p className="eyebrow">Grand Pilatus</p>
+          <h1 className="brand-title">E-Mail-Kampagnen-Management</h1>
+          <p className="brand-copy">
+            Zentrale Steuerung von Kampagnen, Zielgruppen und Performance-Daten
+            für die Marketing-Sachbearbeitung.
+          </p>
+        </div>
+
+        <nav className="nav-list" aria-label="Hauptnavigation">
+          <button
+            className={view === "dashboard" ? "nav-item active" : "nav-item"}
+            onClick={() => setView("dashboard")}
+          >
+            Dashboard
+          </button>
+          <button
+            className={view === "campaigns" ? "nav-item active" : "nav-item"}
+            onClick={() => setView("campaigns")}
+          >
+            Kampagnen
+          </button>
+          <button
+            className={view === "performance" ? "nav-item active" : "nav-item"}
+            onClick={() => setView("performance")}
+          >
+            Performance
+          </button>
+        </nav>
+
+        <div className="sidebar-card">
+          <span className="sidebar-label">Aktive Kampagnen</span>
+          <strong>{dashboardStats.active}</strong>
+          <small>Direkt aus dem aktuellen Datenbestand berechnet.</small>
+        </div>
       </aside>
 
-      <main className="main-content">
+      <main className="content">
         <header className="topbar">
-          <h1>E-Mail-Kampagnen-Management</h1>
-          <div>Marketing Sachbearbeitung</div>
+          <div>
+            <p className="eyebrow">Marketing Suite</p>
+            <h2 className="page-title">
+              {view === "dashboard"
+                ? "Übersicht"
+                : view === "campaigns"
+                ? "Kampagnenverwaltung"
+                : "Performance-Auswertung"}
+            </h2>
+          </div>
+          <div className="topbar-chip">Marketing Sachbearbeitung</div>
         </header>
 
-        {message && <div className="message">{message}</div>}
+        {message && (
+          <div
+            className={message.type === "success" ? "banner success" : "banner error"}
+          >
+            <span className="banner-icon">
+              {message.type === "success" ? "✓" : "!"}
+            </span>
+            <span>{message.text}</span>
+          </div>
+        )}
 
         {view === "dashboard" && (
-          <section>
-            <h2>Dashboard</h2>
-            <div className="card-grid">
-              <div className="card">
-                <h3>Gesamt Kampagnen</h3>
-                <p>{campaigns.length}</p>
+          <section className="page-section">
+            <div className="hero-card">
+              <div>
+                <p className="eyebrow">Aktueller Status</p>
+                <h3>Willkommen im Kampagnen-Cockpit</h3>
+                <p>
+                  Die Oberfläche bündelt die wichtigsten Kennzahlen und
+                  ermöglicht einen direkten Wechsel in die operative
+                  Kampagnenverwaltung.
+                </p>
               </div>
-              <div className="card">
-                <h3>Aktive Kampagnen</h3>
-                <p>{activeCount}</p>
-              </div>
-              <div className="card">
-                <h3>Entwürfe</h3>
-                <p>{draftCount}</p>
-              </div>
-              <div className="card">
-                <h3>Aktuelle Öffnungen</h3>
-                <p>{performance?.openCount ?? 0}</p>
-              </div>
+              <button className="primary" onClick={() => setView("campaigns")}>
+                Jetzt Kampagnen verwalten
+              </button>
+            </div>
+
+            <div className="stats-grid">
+              <article className="stat-card">
+                <span>Gesamt Kampagnen</span>
+                <strong>{dashboardStats.total}</strong>
+              </article>
+              <article className="stat-card">
+                <span>Aktive Kampagnen</span>
+                <strong>{dashboardStats.active}</strong>
+              </article>
+              <article className="stat-card">
+                <span>Entwürfe</span>
+                <strong>{dashboardStats.draft}</strong>
+              </article>
+              <article className="stat-card">
+                <span>Pausiert</span>
+                <strong>{dashboardStats.paused}</strong>
+              </article>
+            </div>
+
+            <div className="dashboard-grid">
+              <article className="surface-card">
+                <div className="section-head">
+                  <h3>Letzte Kampagnen</h3>
+                  <button className="text-button" onClick={() => setView("campaigns")}>
+                    Alle anzeigen
+                  </button>
+                </div>
+                <div className="list">
+                  {campaigns.slice(0, 4).map((campaign) => (
+                    <div key={campaign.id} className="list-row">
+                      <div>
+                        <strong>{campaign.name}</strong>
+                        <p>{campaign.segment}</p>
+                      </div>
+                      <span className={`status-pill ${campaign.status.toLowerCase()}`}>
+                        {campaign.status}
+                      </span>
+                    </div>
+                  ))}
+                  {campaigns.length === 0 && (
+                    <p className="muted">Noch keine Kampagnen vorhanden.</p>
+                  )}
+                </div>
+              </article>
+
+              <article className="surface-card">
+                <div className="section-head">
+                  <h3>Schnellaktion</h3>
+                </div>
+                <p className="muted">
+                  Neue Kampagnen können direkt über die Kampagnenverwaltung
+                  erstellt und im Anschluss sofort analysiert werden.
+                </p>
+                <button className="primary full" onClick={() => setView("campaigns")}>
+                  Neue Kampagne erfassen
+                </button>
+              </article>
             </div>
           </section>
         )}
 
         {view === "campaigns" && (
-          <section>
-            <h2>Kampagnen</h2>
+          <section className="page-section">
+            <div className="workspace-grid">
+              <article className="surface-card">
+                <div className="section-head">
+                  <h3>{editingId ? "Kampagne bearbeiten" : "Neue Kampagne erstellen"}</h3>
+                  {editingId && (
+                    <button className="text-button" onClick={resetForm}>
+                      Bearbeitung abbrechen
+                    </button>
+                  )}
+                </div>
 
-            <div className="panel">
-              <h3>{editingId ? "Kampagne bearbeiten" : "Neue Kampagne"}</h3>
+                <div className="form-grid">
+                  <label>
+                    Kampagnenname
+                    <input
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="z. B. Wellness-Wochenende"
+                    />
+                  </label>
 
-              <div className="form-grid">
-                <input
-                  placeholder="Kampagnenname"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-                <input
-                  placeholder="Segment"
-                  value={form.segment}
-                  onChange={(e) => setForm({ ...form, segment: e.target.value })}
-                />
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value as CampaignStatus })}
-                >
-                  <option value="Entwurf">Entwurf</option>
-                  <option value="Aktiv">Aktiv</option>
-                  <option value="Pausiert">Pausiert</option>
-                  <option value="Beendet">Beendet</option>
-                </select>
-                <input
-                  type="date"
-                  value={form.startDate}
-                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                />
-                <input
-                  type="date"
-                  value={form.endDate}
-                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                />
-                <textarea
-                  placeholder="Beschreibung"
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                />
-              </div>
+                  <label>
+                    Segment
+                    <input
+                      value={form.segment}
+                      onChange={(e) => setForm({ ...form, segment: e.target.value })}
+                      placeholder="z. B. Wellness"
+                    />
+                  </label>
 
-              <div className="button-row">
-                <button onClick={handleSubmit}>{editingId ? "Änderungen speichern" : "Speichern"}</button>
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setEditingId(null);
-                    setForm(emptyForm);
-                    setMessage("Formular zurückgesetzt.");
-                  }}
-                >
-                  Zurücksetzen
-                </button>
-              </div>
-            </div>
+                  <label>
+                    Status
+                    <select
+                      value={form.status}
+                      onChange={(e) =>
+                        setForm({ ...form, status: e.target.value as CampaignStatus })
+                      }
+                    >
+                      {statusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-            <div className="panel">
-              <h3>Suche</h3>
-              <div className="button-row">
-                <input
-                  placeholder="Suche nach Name, Segment oder Status"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                <button onClick={handleSearch}>Suchen</button>
-              </div>
-            </div>
+                  <label>
+                    Startdatum
+                    <input
+                      type="date"
+                      value={form.startDate}
+                      onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                    />
+                  </label>
 
-            <div className="panel">
-              <h3>Kampagnenübersicht</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Segment</th>
-                    <th>Status</th>
-                    <th>Start</th>
-                    <th>Ende</th>
-                    <th>Aktion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaigns.map((campaign) => (
-                    <tr key={campaign.id}>
-                      <td>{campaign.name}</td>
-                      <td>{campaign.segment}</td>
-                      <td>{campaign.status}</td>
-                      <td>{campaign.startDate}</td>
-                      <td>{campaign.endDate}</td>
-                      <td className="actions">
-                        <button onClick={() => handleEdit(campaign)}>Bearbeiten</button>
-                        <button onClick={() => showPerformance(campaign.id)}>Performance</button>
-                        <button className="danger" onClick={() => handleDelete(campaign.id)}>Löschen</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  <label>
+                    Enddatum
+                    <input
+                      type="date"
+                      value={form.endDate}
+                      onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                    />
+                  </label>
+
+                  <label className="full-width">
+                    Beschreibung
+                    <textarea
+                      rows={4}
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      placeholder="Beschreibe Ziel, Angebot und Kernaussage der Kampagne."
+                    />
+                  </label>
+                </div>
+
+                <div className="button-row">
+                  <button className="primary" onClick={handleSubmit}>
+                    {editingId ? "Änderungen speichern" : "Kampagne speichern"}
+                  </button>
+                  <button className="secondary" onClick={resetForm}>
+                    Zurücksetzen
+                  </button>
+                </div>
+              </article>
+
+              <article className="surface-card">
+                <div className="section-head">
+                  <h3>Suche & Übersicht</h3>
+                </div>
+
+                <div className="search-bar">
+                  <input
+                    placeholder="Nach Name, Segment oder Status suchen"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  <button className="primary" onClick={handleSearch}>
+                    Suchen
+                  </button>
+                </div>
+
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Segment</th>
+                        <th>Status</th>
+                        <th>Zeitraum</th>
+                        <th>Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {campaigns.map((campaign) => (
+                        <tr key={campaign.id}>
+                          <td>
+                            <strong>{campaign.name}</strong>
+                            <div className="table-sub">
+                              {campaign.description || "Keine Beschreibung"}
+                            </div>
+                          </td>
+                          <td>{campaign.segment}</td>
+                          <td>
+                            <span className={`status-pill ${campaign.status.toLowerCase()}`}>
+                              {campaign.status}
+                            </span>
+                          </td>
+                          <td>
+                            {campaign.startDate || "–"} bis {campaign.endDate || "–"}
+                          </td>
+                          <td className="actions">
+                            <button
+                              className="secondary small"
+                              onClick={() => handleEdit(campaign)}
+                            >
+                              Bearbeiten
+                            </button>
+                            <button
+                              className="secondary small"
+                              onClick={() => handleShowPerformance(campaign.id)}
+                            >
+                              Performance
+                            </button>
+                            <button
+                              className="danger small"
+                              onClick={() => handleDelete(campaign.id)}
+                            >
+                              Löschen
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {!loading && campaigns.length === 0 && (
+                    <p className="empty-state">Keine Kampagnen gefunden.</p>
+                  )}
+                </div>
+              </article>
             </div>
           </section>
         )}
 
         {view === "performance" && (
-          <section>
-            <h2>Performance</h2>
+          <section className="page-section">
+            <article className="surface-card">
+              <div className="section-head">
+                <h3>Performance laden</h3>
+              </div>
 
-            <div className="panel">
-              <div className="button-row">
-                <label>Kampagnen-ID:</label>
-                <input
-                  type="number"
-                  value={selectedCampaignId ?? ""}
-                  onChange={(e) => setSelectedCampaignId(Number(e.target.value))}
-                />
-                <button
-                  onClick={() => {
-                    if (selectedCampaignId) {
-                      loadPerformance(selectedCampaignId);
-                    }
-                  }}
+              <div className="search-bar performance-bar">
+                <select
+                  value={selectedCampaignId}
+                  onChange={(e) => setSelectedCampaignId(e.target.value)}
                 >
-                  Laden
+                  <option value="">Kampagne auswählen</option>
+                  {campaigns.map((campaign) => (
+                    <option key={campaign.id} value={campaign.id}>
+                      {campaign.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  className="primary"
+                  onClick={() => selectedCampaignId && loadPerformance(selectedCampaignId)}
+                >
+                  Performance anzeigen
                 </button>
               </div>
-            </div>
+
+              {selectedCampaign && (
+                <div className="meta-strip">
+                  <span>{selectedCampaign.name}</span>
+                  <span>{selectedCampaign.segment}</span>
+                  <span>{selectedCampaign.status}</span>
+                </div>
+              )}
+            </article>
 
             {performance ? (
-              <div className="card-grid">
-                <div className="card">
-                  <h3>Versendet</h3>
-                  <p>{performance.sentCount}</p>
-                </div>
-                <div className="card">
-                  <h3>Zugestellt</h3>
-                  <p>{performance.deliveredCount}</p>
-                </div>
-                <div className="card">
-                  <h3>Öffnungen</h3>
-                  <p>{performance.openCount}</p>
-                </div>
-                <div className="card">
-                  <h3>Klicks</h3>
-                  <p>{performance.clickCount}</p>
-                </div>
-                <div className="card">
-                  <h3>Bounces</h3>
-                  <p>{performance.bounceCount ?? 0}</p>
-                </div>
-                <div className="card">
-                  <h3>Abmeldungen</h3>
-                  <p>{performance.unsubscribeCount ?? 0}</p>
-                </div>
+              <div className="stats-grid performance-grid">
+                <article className="stat-card">
+                  <span>Versendet</span>
+                  <strong>{performance.sentCount}</strong>
+                </article>
+                <article className="stat-card">
+                  <span>Zugestellt</span>
+                  <strong>{performance.deliveredCount}</strong>
+                </article>
+                <article className="stat-card">
+                  <span>Öffnungen</span>
+                  <strong>{performance.openCount}</strong>
+                </article>
+                <article className="stat-card">
+                  <span>Klicks</span>
+                  <strong>{performance.clickCount}</strong>
+                </article>
+                <article className="stat-card">
+                  <span>Bounces</span>
+                  <strong>{performance.bounceCount ?? 0}</strong>
+                </article>
+                <article className="stat-card">
+                  <span>Abmeldungen</span>
+                  <strong>{performance.unsubscribeCount ?? 0}</strong>
+                </article>
               </div>
             ) : (
-              <div className="panel">Keine Performance-Daten gefunden.</div>
+              <div className="surface-card empty-box">
+                Wähle eine Kampagne aus, um die Performance-Daten anzuzeigen.
+              </div>
             )}
-          </section>
-        )}
-
-        {view === "mobile" && (
-          <section>
-            <h2>Mobile-App Wireframe/Prototyp</h2>
-            <div className="mobile-grid">
-              <div className="phone">
-                <div className="phone-header">Home</div>
-                <div className="phone-card">
-                  <strong>Wellness-Wochenende</strong>
-                  <p>20 % Rabatt auf Spa-Angebote</p>
-                  <button>Angebot ansehen</button>
-                </div>
-                <div className="phone-card">
-                  <strong>Kulinarik Special</strong>
-                  <p>3-Gang-Dinner inklusive</p>
-                  <button>Angebot ansehen</button>
-                </div>
-                <div className="phone-nav">Home | Angebote | Profil</div>
-              </div>
-
-              <div className="phone">
-                <div className="phone-header">Detail</div>
-                <div className="phone-card">
-                  <strong>Wellness-Wochenende</strong>
-                  <p>Gültig vom 01.06.2026 bis 31.08.2026</p>
-                  <p>Inklusive Spa-Zugang und Frühstück.</p>
-                  <button>Angebot sichern</button>
-                </div>
-                <div className="phone-nav">Home | Angebote | Profil</div>
-              </div>
-
-              <div className="phone">
-                <div className="phone-header">Präferenzen</div>
-                <div className="phone-card">
-                  <p><input type="checkbox" checked readOnly /> Wellness</p>
-                  <p><input type="checkbox" readOnly /> Kulinarik</p>
-                  <p><input type="checkbox" checked readOnly /> E-Mail</p>
-                  <p><input type="checkbox" readOnly /> Push</p>
-                  <button>Speichern</button>
-                </div>
-                <div className="phone-nav">Home | Angebote | Profil</div>
-              </div>
-            </div>
           </section>
         )}
       </main>

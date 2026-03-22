@@ -1,7 +1,17 @@
 export type CampaignStatus = "Entwurf" | "Aktiv" | "Pausiert" | "Beendet";
 
 export interface Campaign {
-  id: number;
+  id: string;
+  name: string;
+  description?: string;
+  segment: string;
+  status: CampaignStatus;
+  startDate?: string;
+  endDate?: string;
+  createdAt?: string;
+}
+
+export interface CampaignFormData {
   name: string;
   description: string;
   segment: string;
@@ -11,9 +21,7 @@ export interface Campaign {
 }
 
 export interface CampaignPerformance {
-  campaignId: number;
-  periodStart: string;
-  periodEnd: string;
+  campaignId: string;
   sentCount: number;
   deliveredCount: number;
   openCount: number;

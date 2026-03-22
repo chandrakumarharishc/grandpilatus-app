@@ -1,54 +1,63 @@
-import { Campaign, CampaignPerformance } from "./types";
+import { Campaign, CampaignFormData, CampaignPerformance } from "./types";
 
 const API_URL = "http://localhost:3001";
 
+async function handleResponse<T>(
+  response: Response,
+  fallbackMessage: string
+): Promise<T> {
+  if (!response.ok) {
+    throw new Error(fallbackMessage);
+  }
+  return response.json() as Promise<T>;
+}
+
 export async function getCampaigns(search = ""): Promise<Campaign[]> {
   const url = search
-    ? `${API_URL}/api/campaigns?search=${encodeURIComponent(search)}`
+    ? `${API_URL}/api/campaigns?q=${encodeURIComponent(search)}`
     : `${API_URL}/api/campaigns`;
 
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error("Kampagnen konnten nicht geladen werden.");
-  }
-  return response.json();
+  return handleResponse<Campaign[]>(
+    response,
+    "Kampagnen konnten nicht geladen werden."
+  );
 }
 
-export async function createCampaign(payload: Omit<Campaign, "id">): Promise<Campaign> {
+export async function createCampaign(
+  payload: CampaignFormData
+): Promise<Campaign> {
   const response = await fetch(`${API_URL}/api/campaigns`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    throw new Error("Kampagne konnte nicht erstellt werden.");
-  }
-
-  return response.json();
+  return handleResponse<Campaign>(
+    response,
+    "Kampagne konnte nicht erstellt werden."
+  );
 }
 
-export async function updateCampaign(id: number, payload: Partial<Omit<Campaign, "id">>): Promise<Campaign> {
+export async function updateCampaign(
+  id: string,
+  payload: Partial<CampaignFormData>
+): Promise<Campaign> {
   const response = await fetch(`${API_URL}/api/campaigns/${id}`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    throw new Error("Kampagne konnte nicht aktualisiert werden.");
-  }
-
-  return response.json();
+  return handleResponse<Campaign>(
+    response,
+    "Kampagne konnte nicht aktualisiert werden."
+  );
 }
 
-export async function deleteCampaign(id: number): Promise<void> {
+export async function deleteCampaign(id: string): Promise<void> {
   const response = await fetch(`${API_URL}/api/campaigns/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
   });
 
   if (!response.ok) {
@@ -56,12 +65,15 @@ export async function deleteCampaign(id: number): Promise<void> {
   }
 }
 
-export async function getPerformance(campaignId: number): Promise<CampaignPerformance> {
-  const response = await fetch(`${API_URL}/api/campaign-performance/${campaignId}`);
+export async function getPerformance(
+  campaignId: string
+): Promise<CampaignPerformance> {
+  const response = await fetch(
+    `${API_URL}/api/campaign-performance/${campaignId}`
+  );
 
-  if (!response.ok) {
-    throw new Error("Performance konnte nicht geladen werden.");
-  }
-
-  return response.json();
+  return handleResponse<CampaignPerformance>(
+    response,
+    "Performance konnte nicht geladen werden."
+  );
 }

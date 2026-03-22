@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: Grand Pilatus Campaign Performance API
+  version: 1.0.0
+servers:
+  - url: https://api.grandpilatus.local/v1
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CampaignPerformance:
+      type: object
+      additionalProperties: false
+      required:
+        - campaignId
+        - periodStart
+        - periodEnd
+        - sentCount
+        - deliveredCount
+        - openCount
+        - clickCount
+      properties:
+        campaignId:
+          type: string
+          example: cmp_2026_03_spring_sale
+        periodStart:
+          type: string
+          format: date-time
+          example: 2026-03-01T00:00:00Z
+        periodEnd:
+          type: string
+          format: date-time
+          example: 2026-03-31T23:59:59Z
+        sentCount:
+          type: integer
+          minimum: 0
+          example: 12000
+        deliveredCount:
+          type: integer
+          minimum: 0
+          example: 11500
+        openCount:
+          type: integer
+          minimum: 0
+          example: 4200
+        clickCount:
+          type: integer
+          minimum: 0
+          example: 950
+
+paths:
+  /campaign-performance/{campaignId}:
+    get:
+      summary: Performance-Daten einer Kampagne lesen
+      operationId: getCampaignPerformance
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Performance-Daten gefunden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignPerformance"
+        "401":
+          description: Nicht autorisiert
+        "404":
+          description: Kampagne nicht gefunden

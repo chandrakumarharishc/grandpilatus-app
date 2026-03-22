@@ -1,13 +1,29 @@
-import { MongoClient } from "mongodb";
+import dotenv from "dotenv";
+import { MongoClient, Db } from "mongodb";
 
-const uri = "mongodb+srv://chandrakumarharishc_db_user:XXt0ga6GYHPqm8on@cluster0.uqi65hu.mongodb.net/";
+dotenv.config();
 
-const client = new MongoClient(uri);
+const uri = process.env.MONGODB_URI;
 
-export let db: any;
+if (!uri) {
+  throw new Error("MONGODB_URI fehlt in den Umgebungsvariablen.");
+}
 
-export async function connectDb() {
+const client = new MongoClient(uri, {
+  serverSelectionTimeoutMS: 5000,
+});
+
+let db: Db;
+
+export async function connectDb(): Promise<void> {
   await client.connect();
   db = client.db("grandpilatus");
   console.log("MongoDB verbunden");
+}
+
+export function getDb(): Db {
+  if (!db) {
+    throw new Error("Datenbank ist noch nicht verbunden.");
+  }
+  return db;
 }
