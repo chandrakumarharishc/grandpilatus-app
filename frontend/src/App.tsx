@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import LoginForm from "./LoginForm";
 import {
   createCampaign,
   deleteCampaign,
   getCampaigns,
   getPerformance,
   updateCampaign,
+  isLoggedIn,
+  logout,
 } from "./api";
 import {
   Campaign,
@@ -32,6 +35,7 @@ const statusOptions: CampaignStatus[] = [
 ];
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [view, setView] = useState<View>("dashboard");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [search, setSearch] = useState("");
@@ -45,6 +49,26 @@ export default function App() {
     text: string;
   } | null>(null);
   const [loading, setLoading] = useState(false);
+
+  function handleLogout() {
+  logout();
+  setLoggedIn(false);
+  setMessage({
+    type: "success",
+    text: "Erfolgreich abgemeldet.",
+  });
+}
+
+
+  function resetForm() {
+  setEditingId(null);
+  setForm(emptyForm);
+  setMessage({
+    type: "success",
+    text: "Formular zurückgesetzt.",
+  });
+}
+
 
   async function loadCampaigns(searchTerm = "") {
     setLoading(true);
@@ -73,6 +97,20 @@ export default function App() {
       });
     }
   }
+
+  useEffect(() => {
+  if (!message) return;
+
+  const timer = window.setTimeout(() => {
+    setMessage(null);
+  }, 3000);
+
+  return () => window.clearTimeout(timer);
+}, [message]);
+
+useEffect(() => {
+  setMessage(null);
+}, [view]);
 
   useEffect(() => {
     loadCampaigns();
@@ -127,7 +165,7 @@ export default function App() {
     } catch {
       setMessage({
         type: "error",
-        text: "Fehler beim Speichern der Kampagne.",
+        text: "Speichern fehlgeschlagen. Bitte zuerst einloggen.",
       });
     }
   }
@@ -148,7 +186,7 @@ export default function App() {
     } catch {
       setMessage({
         type: "error",
-        text: "Kampagne konnte nicht gelöscht werden.",
+        text: "Löschen fehlgeschlagen. Bitte zuerst einloggen.",
       });
     }
   }
@@ -241,7 +279,14 @@ export default function App() {
                 : "Performance-Auswertung"}
             </h2>
           </div>
-          <div className="topbar-chip">Marketing Sachbearbeitung</div>
+          <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                <div className="topbar-chip">Marketing Sachbearbeitung</div>
+                {loggedIn && (
+                  <button className="secondary" onClick={handleLogout}>
+                    Logout
+                  </button>
+                )}
+              </div>
         </header>
 
         {message && (
@@ -257,6 +302,17 @@ export default function App() {
 
         {view === "dashboard" && (
           <section className="page-section">
+                {!loggedIn && (
+                <LoginForm
+                  onLoginSuccess={() => {
+                    setLoggedIn(true);
+                    setMessage({
+                      type: "success",
+                      text: "Login erfolgreich.",
+                    });
+                  }}
+                />
+              )}
             <div className="hero-card">
               <div>
                 <p className="eyebrow">Aktueller Status</p>

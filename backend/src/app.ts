@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { getDb } from "./db";
+import { authenticateToken, createToken } from "./auth";
 
 export const app = express();
 
@@ -10,7 +11,27 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+app.post("/api/auth/login", (req, res) => {
+  const { username, password } = req.body;
 
+  const validUsername = process.env.AUTH_USERNAME;
+  const validPassword = process.env.AUTH_PASSWORD;
+
+  if (!validUsername || !validPassword) {
+    return res.status(500).json({ error: "Auth-Konfiguration fehlt" });
+  }
+
+  if (username !== validUsername || password !== validPassword) {
+    return res.status(401).json({ error: "Benutzername oder Passwort falsch" });
+  }
+
+  const token = createToken({
+    username: validUsername,
+    role: "admin",
+  });
+
+  res.json({ token });
+});
 app.get("/api/campaigns", async (req, res) => {
   try {
     const db = getDb();
@@ -38,7 +59,7 @@ app.get("/api/campaigns", async (req, res) => {
   }
 });
 
-app.post("/api/campaigns", async (req, res) => {
+app.post("/api/campaigns", authenticateToken, async (req, res) => {
   try {
     const db = getDb();
 
@@ -70,7 +91,7 @@ app.post("/api/campaigns", async (req, res) => {
   }
 });
 
-app.put("/api/campaigns/:id", async (req, res) => {
+app.put("/api/campaigns/:id", authenticateToken, async (req, res) => {
   try {
     const db = getDb();
     const id = req.params.id;
@@ -98,7 +119,7 @@ app.put("/api/campaigns/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/campaigns/:id", async (req, res) => {
+app.delete("/api/campaigns/:id", authenticateToken, async (req, res) => {
   try {
     const db = getDb();
     const id = req.params.id;
